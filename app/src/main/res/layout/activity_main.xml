@@ -1,0 +1,35 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <ImageButton
+        android:id="@+id/capture_button"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_marginBottom="32dp"
+        android:background="@drawable/circle_background"
+        android:src="@drawable/ic_capture_photo"
+        android:tint="@android:color/black"
+        android:contentDescription="@string/capture_photo"
+        android:scaleType="centerInside"
+        android:layout_gravity="bottom|center_horizontal" />
+
+    <ImageButton
+        android:id="@+id/switch_camera_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:background="@android:color/transparent"
+        android:src="@drawable/ic_switch_camera"
+        android:contentDescription="@string/switch_camera" />
+
+</FrameLayout>

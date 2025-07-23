@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Minimal Secure Camera</string>
+    <string name="switch_camera">Switch Camera</string>
+    <string name="capture_photo">Capture Photo</string>
+</resources>
