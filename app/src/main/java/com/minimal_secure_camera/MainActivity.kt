@@ -3,11 +3,13 @@ package com.minimal_secure_camera
 import android.Manifest
 import android.content.ContentValues
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
-import android.widget.Button
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,7 +18,9 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import java.io.FileOutputStream
+import androidx.exifinterface.media.ExifInterface
+import java.io.InputStream
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -59,16 +63,13 @@ class MainActivity : AppCompatActivity() {
         if (allPermissionsGranted()) {
             startCamera()
         } else {
-            requestPermissionLauncher.launch(
-                arrayOf(Manifest.permission.CAMERA)
-            )
+            requestPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
         }
     }
 
     private fun allPermissionsGranted(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            baseContext, Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
+        return ContextCompat.checkSelfPermission(baseContext, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
     }
 
     private fun startCamera() {
@@ -87,12 +88,7 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 cameraProvider?.unbindAll()
-                cameraProvider?.bindToLifecycle(
-                    this,
-                    lensFacing,
-                    preview,
-                    imageCapture
-                )
+                cameraProvider?.bindToLifecycle(this, lensFacing, preview, imageCapture)
             } catch (e: Exception) {
                 Log.e("MinimalSecureCamera", "Use case binding failed", e)
             }
@@ -102,8 +98,7 @@ class MainActivity : AppCompatActivity() {
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
 
-        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-            .format(Date())
+        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
 
         val contentValues = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
@@ -132,12 +127,20 @@ class MainActivity : AppCompatActivity() {
                     val uri = outputFileResults.savedUri ?: return
 
                     try {
-                        val inputStream = contentResolver.openInputStream(uri)!!
-                        val noExifBytes = inputStream.readBytes()
+                        val inputStream: InputStream = contentResolver.openInputStream(uri) ?: return
+                        val bitmap = BitmapFactory.decodeStream(inputStream)
                         inputStream.close()
 
-                        val outputStream = contentResolver.openOutputStream(uri, "rwt") as FileOutputStream
-                        outputStream.write(noExifBytes)
+                        // Получение ориентации
+                        val exif = ExifInterface(contentResolver.openInputStream(uri)!!)
+                        val orientation = exif.getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                        )
+                        val rotatedBitmap = rotateBitmapIfRequired(bitmap, orientation)
+
+                        val outputStream: OutputStream = contentResolver.openOutputStream(uri, "rwt") ?: return
+                        rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
                         outputStream.close()
 
                         Toast.makeText(baseContext, "Saved without EXIF: $uri", Toast.LENGTH_SHORT).show()
@@ -148,5 +151,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
+    }
+
+    private fun rotateBitmapIfRequired(bitmap: Bitmap, orientation: Int): Bitmap {
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            else -> return bitmap
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 }
