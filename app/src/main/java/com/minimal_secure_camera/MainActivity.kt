@@ -10,15 +10,21 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
+import android.view.MotionEvent
+import android.content.Intent
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
+import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
+import android.hardware.camera2.CaptureRequest
+import java.util.concurrent.TimeUnit
 import java.io.InputStream
 import java.io.OutputStream
 import java.text.SimpleDateFormat
@@ -30,6 +36,9 @@ class MainActivity : AppCompatActivity() {
 
     private var lensFacing = CameraSelector.DEFAULT_BACK_CAMERA
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var aspectRatio = AspectRatio.RATIO_4_3
+    private var isoValue: Int? = null
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
@@ -60,6 +69,46 @@ class MainActivity : AppCompatActivity() {
             startCamera()
         }
 
+        findViewById<ImageButton>(R.id.gallery_button).setOnClickListener {
+            startActivity(Intent(this, GalleryActivity::class.java))
+        }
+
+        findViewById<ImageButton>(R.id.settings_button).setOnClickListener { view ->
+            val menu = PopupMenu(this, view)
+            menu.menu.add("Aspect 4:3")
+            menu.menu.add("Aspect 16:9")
+            menu.menu.add("ISO Auto")
+            menu.menu.add("ISO 100")
+            menu.menu.add("ISO 200")
+            menu.menu.add("ISO 400")
+            menu.menu.add("ISO 800")
+            menu.setOnMenuItemClickListener { item ->
+                when (item.title) {
+                    "Aspect 4:3" -> aspectRatio = AspectRatio.RATIO_4_3
+                    "Aspect 16:9" -> aspectRatio = AspectRatio.RATIO_16_9
+                    "ISO Auto" -> isoValue = null
+                    "ISO 100" -> isoValue = 100
+                    "ISO 200" -> isoValue = 200
+                    "ISO 400" -> isoValue = 400
+                    "ISO 800" -> isoValue = 800
+                }
+                startCamera()
+                true
+            }
+            menu.show()
+        }
+
+        previewView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
+                val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF)
+                    .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                    .build()
+                camera?.cameraControl?.startFocusAndMetering(action)
+            }
+            true
+        }
+
         if (allPermissionsGranted()) {
             startCamera()
         } else {
@@ -78,17 +127,27 @@ class MainActivity : AppCompatActivity() {
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
 
-            val preview = Preview.Builder().build().also {
+            val previewBuilder = Preview.Builder().setTargetAspectRatio(aspectRatio)
+            isoValue?.let {
+                Camera2Interop.Extender(previewBuilder)
+                    .setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, it)
+            }
+            val preview = previewBuilder.build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-            imageCapture = ImageCapture.Builder()
+            val imageCaptureBuilder = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .build()
+                .setTargetAspectRatio(aspectRatio)
+            isoValue?.let {
+                Camera2Interop.Extender(imageCaptureBuilder)
+                    .setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, it)
+            }
+            imageCapture = imageCaptureBuilder.build()
 
             try {
                 cameraProvider?.unbindAll()
-                cameraProvider?.bindToLifecycle(this, lensFacing, preview, imageCapture)
+                camera = cameraProvider?.bindToLifecycle(this, lensFacing, preview, imageCapture)
             } catch (e: Exception) {
                 Log.e("MinimalSecureCamera", "Use case binding failed", e)
             }
